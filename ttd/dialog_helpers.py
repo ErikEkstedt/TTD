@@ -12,6 +12,34 @@ from ttd.vad_helpers import (
 from ttd.utils import find_island_idx_len
 
 
+def find_next_word_index_start(i, x):
+    """
+    start from the next token in the data and check if it belonged to the same word as the current.
+    If the next token belongs to the same word as the current token we check one step further until we
+    reach the first token of the next word.
+    """
+    cur_word_index = x["word_ids"][i]
+    cur_end = x["ends"][i]
+    cur_speaker = x["speaker_ids"][i]
+    max_i = len(x["speaker_ids"])
+    is_last = False
+    pause = 0  # binary label of pause: 0-false, 1-true
+    j = i + 1
+    while True:
+        if x["word_ids"][j] != cur_word_index:
+            t = x["starts"][j] - cur_end
+            if t < 0:
+                t = 0.0
+            if x["speaker_ids"][j] == cur_speaker:
+                pause = 1
+            break
+        j += 1
+        if j == max_i:
+            is_last = True
+            return None, None, is_last
+    return t, pause, is_last
+
+
 def join_consecutive_utterances(dialog, sort_key="start"):
     """ join consecutive utterances by the same speaker """
     dialog.sort(key=lambda x: x[sort_key])

@@ -3,11 +3,20 @@ from os.path import join, split, basename, exists
 from os import makedirs, listdir
 from glob import glob
 from tqdm import tqdm
+from time import time
+import shutil
 
 import torch
 
 from ttd.utils import read_json, write_json, write_txt, read_txt
 from ttd.vad_helpers import vad_from_word_level
+from ttd.tokenizer_helpers import (
+    tokenize_word_level_dialog,
+    tokenize_turn_level_dialog,
+    add_explicit_turn_shift_token,
+    chunk_tokenized_dialog,
+    tokenizer_info,
+)
 
 
 # This feels very dumb....
@@ -184,6 +193,220 @@ class BaseBuilder(object):
             # vad = words_to_vad_percentage(word_level_dialog, audio_path)
             vad_path = join(self.vad_root, json_name)
             torch.save(vad, join(self.vad_root, json_name.replace(".json", ".pt")))
+
+    def prepare_turn_level_tokens(self, tokenizer):
+        if not self.check_if_dir_exists(self.tokenized_turn_level_root, ".json"):
+            self.prepare_turn_level()
+
+            makedirs(self.tokenized_turn_level_root, exist_ok=True)
+
+            # TOKENIZER SANITY CHECK
+            _ = tokenizer_info(
+                tokenizer, self.tokenized_turn_level_root
+            )  # Save tokenizer info for checks
+
+            t = time.time()
+            broken = 0
+            broken_files = []
+            for turn_level_path in tqdm(
+                glob(join(self.turn_level_root, "*.json")),
+                desc=f"Tokenizing Turn-level {self.NAME}",
+            ):
+                turn_level_dialog = read_json(turn_level_path)
+
+                (
+                    input_ids,
+                    speaker_ids,
+                    word_ids,
+                    starts,
+                    ends,
+                ) = tokenize_turn_level_dialog(
+                    turn_level_dialog, tokenizer, remove_punctuation=True
+                )
+
+                data = {
+                    "input_ids": input_ids,
+                    "speaker_ids": speaker_ids,
+                    "word_ids": word_ids,
+                }
+
+                if len(starts) > 0:
+                    data["starts"] = starts
+
+                if len(ends) > 0:
+                    data["ends"] = ends
+
+                write_json(
+                    data,
+                    join(self.tokenized_turn_level_root, basename(turn_level_path)),
+                )
+
+            t = time.time() - t
+            print(f"{self.NAME} tokenization took {round(t, 1)} seconds")
+            print(f"{self.NAME} broken", broken)
+            write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
+        return self.tokenized_turn_level_root
+
+    def prepare_word_level_tokens(self, tokenizer):
+        if not self.check_if_dir_exists(self.tokenized_word_level_root):
+            self.prepare_word_level()
+
+            makedirs(self.tokenized_word_level_root, exist_ok=True)
+
+            # TOKENIZER SANITY CHECK
+            _ = tokenizer_info(
+                tokenizer, self.tokenized_word_level_root
+            )  # Save tokenizer info for checks
+
+            desc = f"Tokenizing Word-level {self.NAME}"
+            t = time.time()
+            broken = 0
+            broken_files = []
+            for word_level_path in tqdm(
+                glob(join(self.word_level_root, "*.json")), desc=desc
+            ):
+                json_name = basename(word_level_path)
+                word_level_dialog = read_json(word_level_path)
+
+                (
+                    input_ids,
+                    speaker_ids,
+                    word_ids,
+                    starts,
+                    ends,
+                ) = tokenize_word_level_dialog(
+                    word_level_dialog,
+                    tokenizer,
+                )
+                write_json(
+                    {
+                        "input_ids": input_ids,
+                        "speaker_ids": speaker_ids,
+                        "starts": starts,
+                        "ends": ends,
+                        "word_ids": word_ids,
+                    },
+                    join(self.tokenized_word_level_root, json_name),
+                )
+
+            t = time.time() - t
+            print(f"{self.NAME} tokenization took {round(t, 1)} seconds")
+            print(f"{self.NAME} broken", broken)
+            write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
+
+    def prepare_explicit_turn_level_tokens(self, tokenizer, EOT_token_id=None):
+        """
+        loads all tokenized turn-level dialogs and inserts, either a special EOT_token_id (if not None)
+        or the index of the next speaker token, in between the turns.
+        """
+
+        tokenized_explicit_turn_path = self.get_tokenized_root(
+            level="turn", explicit_turns=True, EOT_token_id=EOT_token_id, chunk_size=-1
+        )
+
+        if not self.check_if_dir_exists(tokenized_explicit_turn_path, ".json"):
+            self.prepare_turn_level_tokens(tokenizer)  # check the necessary data exists
+
+            makedirs(tokenized_explicit_turn_path, exist_ok=True)
+
+            # Copy tokenizer info
+            src = join(self.tokenized_turn_level_root, "tokenizer_info")
+            dst = join(tokenized_explicit_turn_path, "tokenizer_info")
+            shutil.copy(src, dst)
+
+            tok_files = glob(join(self.tokenized_turn_level_root, "*.json"))
+            for tokenized_turn_level_path in tqdm(
+                tok_files, desc=f"{self.NAME} Explicit turns"
+            ):
+                tokenized_turn_level_dialog = read_json(tokenized_turn_level_path)
+                explicit_turns = add_explicit_turn_shift_token(
+                    tokenized_turn_level_dialog, EOT_token_id
+                )
+                json_name = basename(tokenized_turn_level_path)
+                write_json(
+                    explicit_turns, join(tokenized_explicit_turn_path, json_name)
+                )
+        return tokenized_explicit_turn_path
+
+    def prepare_chunked_tokens(
+        self, tokenized_path, chunk_size, overlap, keep_length, sep="_#"
+    ):
+        assert chunk_size > 0, "chunk size must be larger than 0"
+        tokenized_chunk_path = tokenized_path + f"_chunk-{chunk_size}"
+
+        if not self.check_if_dir_exists(tokenized_chunk_path, ".json"):
+            print(f"Chunk {self.NAME} -> {chunk_size}")
+            makedirs(tokenized_chunk_path, exist_ok=True)
+
+            # Copy tokenizer used
+            # tokenizer_info(tokenizer, self.tokenized_turn_level_root)
+            src = join(tokenized_path, "tokenizer_info")
+            dst = join(tokenized_chunk_path, "tokenizer_info")
+            shutil.copy(src, dst)
+
+            tokenized_files = glob(join(tokenized_path, "*.json"))
+            for json_path in tqdm(tokenized_files, desc=f"{self.NAME} Chunk"):
+                tokenized_dialog = read_json(json_path)
+                chunked_dialogs = chunk_tokenized_dialog(
+                    tokenized_dialog, chunk_size, overlap, keep_length
+                )
+
+                # Save the chunked files
+                name = basename(json_path).replace(".json", "")
+                for i, chunked_dialog in enumerate(chunked_dialogs):
+                    tmp_name = name
+                    if i > 0:
+                        tmp_name += sep + str(i)
+                    write_json(
+                        chunked_dialog, join(tokenized_chunk_path, tmp_name + ".json")
+                    )
+
+        print("Chunk size: ", chunk_size)
+        return tokenized_chunk_path
+
+    def transform_split_filepaths_with_chunks(self, chunked_path, sep="_#"):
+        chunked_files = glob(join(chunked_path, "*.json"))
+
+        train_extended = []
+        val_extended = []
+        test_extended = []
+        for f in chunked_files:
+            path = split(f)[0]
+            filename = basename(f)
+            name = filename.replace(".json", "").split(sep)[0]
+            orig_name = name + ".json"
+            if orig_name in self.train_filepaths:
+                train_extended.append(filename)
+            if orig_name in self.test_filepaths:
+                val_extended.append(filename)
+            if orig_name in self.val_filepaths:
+                test_extended.append(filename)
+
+        print(self.NAME)
+        print(f"Train {len(self.train_filepaths)} -> {len(train_extended)}")
+        print(f"val {len(self.val_filepaths)} -> {len(val_extended)}")
+        print(f"test {len(self.test_filepaths)} -> {len(test_extended)}")
+        print("-" * 50)
+        self.train_filepaths = train_extended
+        self.val_filepaths = val_extended
+        self.test_filepaths = test_extended
+
+    def get_tokenized_filepaths(self, split="train", level="word"):
+        filepaths = []
+        if level == "word":
+            if split == "train":
+                for filename in self.train_filepaths:
+                    filepaths.append(join(self.tokenized_word_level_root, filename))
+            elif split == "val":
+                for filename in self.val_filepaths:
+                    filepaths.append(join(self.tokenized_word_level_root, filename))
+            elif split == "test":
+                for filename in self.test_filepaths:
+                    filepaths.append(join(self.tokenized_word_level_root, filename))
+        elif level == "turn":
+            print("Turn level tokenized")
+
+        return filepaths
 
     @staticmethod
     def add_data_specific_args(parent_parser, name="name"):
