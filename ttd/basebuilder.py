@@ -3,13 +3,14 @@ from os.path import join, split, basename, exists
 from os import makedirs, listdir
 from glob import glob
 from tqdm import tqdm
-from time import time
+import time
 import shutil
 
 import torch
 
 from ttd.utils import read_json, write_json, write_txt, read_txt
 from ttd.vad_helpers import vad_from_word_level
+from ttd.POS import extract_turn_level_pos
 from ttd.tokenizer_helpers import (
     tokenize_word_level_dialog,
     tokenize_turn_level_dialog,
@@ -23,39 +24,39 @@ from ttd.tokenizer_helpers import (
 def add_builder_specific_args(parser, datasets):
     for ds in datasets:
         if ds.lower() == "maptask":
-            from research.datasets.maptask import MaptaskBuilder
+            from ttd.datasets.maptask import MaptaskBuilder
 
             parser = MaptaskBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "switchboard":
-            from research.datasets.switchboard import SwitchboardBuilder
+            from ttd.datasets.switchboard import SwitchboardBuilder
 
             parser = SwitchboardBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "persona":
-            from research.datasets import PersonaBuilder
+            from ttd.datasets import PersonaBuilder
 
             parser = PersonaBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "dailydialog":
-            from research.datasets import DailydialogBuilder
+            from ttd.datasets import DailydialogBuilder
 
             parser = DailydialogBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "empathetic":
-            from research.datasets import EmpatheticBuilder
+            from ttd.datasets import EmpatheticBuilder
 
             parser = EmpatheticBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "coached":
-            from research.datasets import CoachedBuilder
+            from ttd.datasets import CoachedBuilder
 
             parser = CoachedBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "taskmaster":
-            from research.datasets import TaskmasterBuilder
+            from ttd.datasets import TaskmasterBuilder
 
             parser = TaskmasterBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "multiwoz":
-            from research.datasets import MultiwozBuilder
+            from ttd.datasets import MultiwozBuilder
 
             parser = MultiwozBuilder.add_data_specific_args(parser, name=ds)
         elif ds.lower() == "metalwoz":
-            from research.datasets import MetalwozBuilder
+            from ttd.datasets import MetalwozBuilder
 
             parser = MetalwozBuilder.add_data_specific_args(parser, name=ds)
         else:
@@ -71,39 +72,39 @@ def create_builders(hparams):
     builders = []
     for ds in hparams["datasets"]:
         if ds.lower() == "maptask":
-            from research.datasets import MaptaskBuilder
+            from ttd.datasets import MaptaskBuilder
 
             tmp_builder = MaptaskBuilder(hparams)
         elif ds.lower() == "switchboard":
-            from research.datasets import SwitchboardBuilder
+            from ttd.datasets import SwitchboardBuilder
 
             tmp_builder = SwitchboardBuilder(hparams)
         elif ds.lower() == "persona":
-            from research.datasets import PersonaBuilder
+            from ttd.datasets import PersonaBuilder
 
             tmp_builder = PersonaBuilder(hparams)
         elif ds.lower() == "dailydialog":
-            from research.datasets import DailydialogBuilder
+            from ttd.datasets import DailydialogBuilder
 
             tmp_builder = DailydialogBuilder(hparams)
         elif ds.lower() == "empathetic":
-            from research.datasets import EmpatheticBuilder
+            from ttd.datasets import EmpatheticBuilder
 
             tmp_builder = EmpatheticBuilder(hparams)
         elif ds.lower() == "coached":
-            from research.datasets import CoachedBuilder
+            from ttd.datasets import CoachedBuilder
 
             tmp_builder = CoachedBuilder(hparams)
         elif ds.lower() == "taskmaster":
-            from research.datasets import TaskmasterBuilder
+            from ttd.datasets import TaskmasterBuilder
 
             tmp_builder = TaskmasterBuilder(hparams)
         elif ds.lower() == "multiwoz":
-            from research.datasets import MultiwozBuilder
+            from ttd.datasets import MultiwozBuilder
 
             tmp_builder = MultiwozBuilder(hparams)
         elif ds.lower() == "metalwoz":
-            from research.datasets import MetalwozBuilder
+            from ttd.datasets import MetalwozBuilder
 
             tmp_builder = MetalwozBuilder(hparams)
         else:
@@ -154,9 +155,49 @@ class BaseBuilder(object):
             return False
         return True
 
+    def prepare_pos(self):
+        if not self.check_if_dir_exists(self.pos_root):
+            makedirs(self.pos_root, exist_ok=True)
+
+            # Makes sure that the data we need exists
+            self.prepare_turn_level()
+
+            # Iterate over the turn_level_dialogs and constructs vad base on the duration
+            # (using the audio path and the sox to extract the duration of the audio)
+            files = glob(join(self.turn_level_root, "*.json"))
+            for turn_level_path in tqdm(files, desc=f"{self.NAME} POS"):
+                turn_level_dialog = read_json(turn_level_path)
+                pos, words = extract_turn_level_pos(turn_level_dialog)
+                write_json(
+                    {"pos": pos, "words": words},
+                    join(self.pos_root, basename(turn_level_path)),
+                )
+        return self.pos_root
+
     def prepare_vad(self):
+        """
+        process vad information which is a list for each channel in the audio with start and end values
+        as percentages of the total duration.
+        Useful when diffent frame levels are used and so on.
+        """
         if not self.check_if_dir_exists(self.vad_root):
-            self._process_vad()
+            makedirs(self.vad_root, exist_ok=True)
+
+            # Makes sure that the data we need exists
+            self.prepare_word_level()
+
+            # Iterate over the word_level_dialogs and constructs vad base on the duration
+            # (using the audio path and the sox to extract the duration of the audio)
+            files = glob(join(self.word_level_root, "*.json"))
+            for word_level_path in tqdm(files, desc=f"{self.NAME} VAD"):
+                json_name = basename(word_level_path)
+
+                word_level_dialog = read_json(word_level_path)
+                audio_path = self.get_audio_path(json_name)
+                vad = vad_from_word_level(word_level_dialog, audio_path)
+                # vad = words_to_vad_percentage(word_level_dialog, audio_path)
+                vad_path = join(self.vad_root, json_name)
+                torch.save(vad, join(self.vad_root, json_name.replace(".json", ".pt")))
 
     def prepare_turn_level(self):
         if not self.check_if_dir_exists(self.turn_level_root):
@@ -169,30 +210,6 @@ class BaseBuilder(object):
     def get_audio_path(self, name):
         audio_name = name + self.AUDIO_EXT
         return join(self.audio_root, audio_name)
-
-    def _process_vad(self):
-        """
-        process vad information which is a list for each channel in the audio with start and end values
-        as percentages of the total duration.
-        Useful when diffent frame levels are used and so on.
-        """
-        makedirs(self.vad_root, exist_ok=True)
-
-        # Makes sure that the data we need exists
-        self.prepare_word_level()
-
-        # Iterate over the word_level_dialogs and constructs vad base on the duration
-        # (using the audio path and the sox to extract the duration of the audio)
-        files = glob(join(self.word_level_root, "*.json"))
-        for word_level_path in tqdm(files, desc=f"Vad {self.NAME}"):
-            json_name = basename(word_level_path)
-
-            word_level_dialog = read_json(word_level_path)
-            audio_path = self.get_audio_path(json_name)
-            vad = vad_from_word_level(word_level_dialog, audio_path)
-            # vad = words_to_vad_percentage(word_level_dialog, audio_path)
-            vad_path = join(self.vad_root, json_name)
-            torch.save(vad, join(self.vad_root, json_name.replace(".json", ".pt")))
 
     def prepare_turn_level_tokens(self, tokenizer):
         if not self.check_if_dir_exists(self.tokenized_turn_level_root, ".json"):
@@ -391,22 +408,23 @@ class BaseBuilder(object):
         self.val_filepaths = val_extended
         self.test_filepaths = test_extended
 
-    def get_tokenized_filepaths(self, split="train", level="word"):
-        filepaths = []
-        if level == "word":
-            if split == "train":
-                for filename in self.train_filepaths:
-                    filepaths.append(join(self.tokenized_word_level_root, filename))
-            elif split == "val":
-                for filename in self.val_filepaths:
-                    filepaths.append(join(self.tokenized_word_level_root, filename))
-            elif split == "test":
-                for filename in self.test_filepaths:
-                    filepaths.append(join(self.tokenized_word_level_root, filename))
-        elif level == "turn":
-            print("Turn level tokenized")
+    def get_tokenized_root(
+        self, level="turn", explicit_turns=False, EOT_token_id=None, chunk_size=-1
+    ):
+        if level == "turn":
+            path = self.tokenized_turn_level_root
+        else:
+            path = self.tokenized_word_level_root
 
-        return filepaths
+        if explicit_turns:
+            path += "_explicit_turns"
+
+        if EOT_token_id is not None:
+            path += f"_ts-{EOT_token_id}"
+
+        if chunk_size > 0:
+            path += f"_chunk-{chunk_size}"
+        return path
 
     @staticmethod
     def add_data_specific_args(parent_parser, name="name"):

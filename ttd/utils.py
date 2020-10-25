@@ -1,6 +1,6 @@
 import math
 import json
-from subprocess import check_output
+import subprocess
 from os.path import split, join
 
 import torch
@@ -44,9 +44,18 @@ def write_txt(txt, name):
         f.write("\n".join(txt))
 
 
+def wget(url, to):
+    cmd = ["wget", "-O", to, url]
+    # system(cmd)
+    subprocess.call(cmd)
+
+
 def get_duration_sox(fpath):
     out = (
-        check_output(f"sox --i {fpath}", shell=True).decode("utf-8").strip().split("\n")
+        subprocess.check_output(f"sox --i {fpath}", shell=True)
+        .decode("utf-8")
+        .strip()
+        .split("\n")
     )
     for line in out:
         if line.lower().startswith("duration"):
@@ -59,7 +68,10 @@ def get_duration_sox(fpath):
 
 def get_sample_rate_sox(fpath):
     out = (
-        check_output(f"sox --i {fpath}", shell=True).decode("utf-8").strip().split("\n")
+        subprocess.check_output(f"sox --i {fpath}", shell=True)
+        .decode("utf-8")
+        .strip()
+        .split("\n")
     )
     for line in out:
         if line.lower().startswith("sample rate"):
@@ -99,3 +111,90 @@ def find_island_idx_len(x):
     dur = it[1:] - it[:-1]
     idx = torch.cumsum(torch.cat((torch.LongTensor([0]), dur)), dim=0)[:-1]  # positions
     return idx, dur, x[i]
+
+
+def fscores(pos, neg):
+    """fscores.
+
+    :param pos:     torch.tensor, containing the predictions for all positive classes
+    :param neg:     torch.tensor, containing the predictions for all negative classes
+    """
+
+    def get_weighted(xp, xn, p, n):
+        return (p * xp + n * xn) / (n + p)
+
+    cutoff = torch.linspace(0.01, 0.99, 99).unsqueeze(1)
+    n_pos = pos.nelement()
+    n_neg = neg.nelement()
+    total = n_pos + n_neg
+
+    tp = (pos >= cutoff).sum(dim=-1, dtype=torch.float)
+    fn = n_pos - tp  # fn = (pos < cutoff).sum(dim=-1, dtype=torch.float)
+    fp = (neg >= cutoff).sum(dim=-1, dtype=torch.float)
+    tn = n_neg - fp  # tn = (neg < cutoff).sum(dim=-1, dtype=torch.float)
+
+    ################################
+    # Postive (regular)
+    # Precision: PPV
+    p_den = tp + fp
+    p = torch.zeros_like(p_den)
+    p[p_den > 0] = tp[p_den > 0] / p_den[p_den > 0]
+
+    # Recall:  TPR
+    r_den = tp + fn
+    r = torch.zeros_like(r_den)
+    r[r_den > 0] = tp[r_den > 0] / r_den[r_den > 0]
+
+    # F1-score
+    den = p + r
+    f1 = torch.zeros_like(den)
+    f1[den > 0] = 2 * (p[den > 0] * r[den > 0]) / den[den > 0]
+
+    ################################
+    # NEGATIVE
+    # Precision: PPV
+    pn_den = tn + fn
+    pn = torch.zeros_like(pn_den)
+    pn[pn_den > 0] = tn[pn_den > 0] / pn_den[pn_den > 0]
+
+    # Recall:  TPR
+    rn_den = tn + fp
+    rn = torch.zeros_like(rn_den)
+    rn[rn_den > 0] = tn[rn_den > 0] / rn_den[rn_den > 0]
+
+    # F1-score
+    nden = pn + rn
+    nf1 = torch.zeros_like(nden)
+    nf1[nden > 0] = 2 * (pn[nden > 0] * rn[nden > 0]) / nden[nden > 0]
+
+    # Accuracies
+    # Acc
+    acc = (tp + tn) / (tp + tn + fp + fn)
+
+    # Bacc / UAR
+    tnr_den = tn + fp
+    tnr = torch.zeros_like(tnr_den)
+    tnr[tnr_den > 0] = tn[tnr_den > 0] / tnr_den[tnr_den > 0]
+    bacc = (r + tnr) / 2
+
+    # Concatenate Fscore, Recall, precision
+    f1w = get_weighted(f1, nf1, n_pos, n_neg)
+    pw = get_weighted(p, pn, n_pos, n_neg)
+    rw = get_weighted(r, rn, n_pos, n_neg)
+
+    f1 = torch.stack((nf1, f1, f1w), dim=-1)
+    p = torch.stack((pn, p, pw), dim=-1)
+    r = torch.stack((rn, r, rw), dim=-1)
+
+    return {
+        "f1": f1,
+        "precision": p,
+        "recall": r,
+        "acc": acc,
+        "bacc": bacc,
+        "tp": tp,
+        "tn": tn,
+        "fp": fp,
+        "fn": fn,
+        "cutoffs": cutoff.squeeze(-1),
+    }

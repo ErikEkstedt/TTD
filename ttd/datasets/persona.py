@@ -5,9 +5,8 @@ import subprocess
 from tqdm import tqdm
 import re
 
-
-from research.utils import read_txt, write_json, write_txt, read_json
-from research.datasets.basebuilder import BaseBuilder
+from ttd.utils import read_txt, write_json, write_txt, read_json
+from ttd.basebuilder import BaseBuilder
 
 
 def clean_persona(t):

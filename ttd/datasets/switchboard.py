@@ -7,9 +7,16 @@ from glob import glob
 from tqdm import tqdm
 import re
 
-from research.utils import read_txt, write_json, read_json
-from research.dialog_to_trajectory import turns_omit_overlaps_and_shift
-from research.datasets.basebuilder import BaseBuilder
+import torch
+
+from ttd.basebuilder import BaseBuilder
+from ttd.dialog_helpers import word_level_to_turns
+from ttd.utils import (
+    read_json,
+    write_json,
+    get_duration_sox,
+    get_sample_rate_sox,
+)
 
 
 SWB_OMIT = [
@@ -143,14 +150,23 @@ class SwitchboardBuilder(BaseBuilder):
         word_level_files = glob(join(self.word_level_root, "*.json"))
         for word_level_path in tqdm(word_level_files):
             json_name = basename(word_level_path)
+
             audio_path = self.get_audio_path(json_name.replace(".json", ""))
             vad_path = join(self.vad_root, json_name.replace(".json", ".pt"))
+
             word_level_dialog = read_json(word_level_path)
-            turn_dialog = turns_omit_overlaps_and_shift(
-                word_level_dialog, vad_path, audio_path
+            vad = torch.load(vad_path)  # list of (start, end) times
+            duration = get_duration_sox(audio_path)
+            sr = get_sample_rate_sox(audio_path)
+
+            word_level_turns = word_level_to_turns(
+                word_level_dialog,
+                vad,
+                duration,
+                sr,
             )
-            savename = join(self.turn_level_root, json_name)
-            write_json(turn_dialog, savename)
+
+            write_json(word_level_turns, join(self.turn_level_root, json_name))
 
     def _process_word_level(self):
         print(f"{self.NAME}: process_word_level")  # logger
@@ -250,3 +266,6 @@ if __name__ == "__main__":
     hparams = vars(args)
     builder = SwitchboardBuilder(hparams)
     builder.prepare_turn_level()
+
+    file = join(builder.turn_level_root, builder.val_filepaths[0])
+    print(read_json(file))

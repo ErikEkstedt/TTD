@@ -34,25 +34,6 @@ MAPTASK_WORD_MAP = {
 }
 
 
-def check_mt_words():
-    from research.datasets.verbal import WordDataset
-
-    parser = ArgumentParser()
-    parser = MaptaskDM.add_data_specific_args(parser)
-    args = parser.parse_args()
-    dm = MaptaskDM(vars(args))
-    dm.prepare_data()
-    dset = WordDataset(dm.dialog_root)
-    non_alpha = set()
-    for words, speaker_id, starts, name in tqdm(dset):
-        for w in words:
-            w = re.sub(r"\'", "", w)
-            if not w.isalpha():
-                non_alpha.add(w)
-    print(len(non_alpha))
-    return non_alpha
-
-
 def clean_maptask_word(w):
     w = MAPTASK_WORD_MAP.get(w, w)
     w = re.sub('"', "", w)  # remove quotations
@@ -268,3 +249,6 @@ if __name__ == "__main__":
     hparams = vars(args)
     builder = MaptaskBuilder(hparams)
     builder.prepare_turn_level()
+
+    file = join(builder.turn_level_root, builder.val_filepaths[0])
+    print(read_json(file))

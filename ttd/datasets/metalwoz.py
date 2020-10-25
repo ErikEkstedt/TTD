@@ -1,7 +1,7 @@
+from argparse import ArgumentParser
 from os.path import join, exists, basename
 from os import makedirs
 import subprocess
-from argparse import ArgumentParser
 from glob import glob
 from tqdm import tqdm
 import random
@@ -9,8 +9,8 @@ import time
 import json
 
 
-from research.utils import write_txt, read_txt, wget, read_json, write_json
-from research.datasets.basebuilder import BaseBuilder
+from ttd.utils import write_txt, read_txt, wget, read_json, write_json
+from ttd.basebuilder import BaseBuilder
 
 
 random.seed(10)  # for split creation

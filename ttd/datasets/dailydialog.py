@@ -1,12 +1,12 @@
+from argparse import ArgumentParser
 from os.path import join, exists, basename
 from os import makedirs
 import subprocess
-from argparse import ArgumentParser
 from tqdm import tqdm
 import re
 
-from research.utils import read_txt, write_json, write_txt, wget, read_json
-from research.datasets.basebuilder import BaseBuilder
+from ttd.utils import read_txt, write_json, write_txt, wget, read_json
+from ttd.basebuilder import BaseBuilder
 
 
 def clean_daily(text):

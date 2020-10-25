@@ -1,15 +1,15 @@
+from argparse import ArgumentParser
 from os.path import join, exists, basename
 from os import makedirs
-from argparse import ArgumentParser
 from glob import glob
 import csv
 import random
 from tqdm import tqdm
 import time
 
-from research.utils import read_txt, wget, read_json, write_json, write_txt
-from research.datasets.dialog_utils import join_consecutive_utterances
-from research.datasets.basebuilder import BaseBuilder
+from ttd.utils import read_txt, wget, read_json, write_json, write_txt
+from ttd.dialog_helpers import join_consecutive_utterances
+from ttd.basebuilder import BaseBuilder
 
 
 random.seed(10)  # for split creation

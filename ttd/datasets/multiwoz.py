@@ -5,8 +5,8 @@ from argparse import ArgumentParser
 from tqdm import tqdm
 
 
-from research.utils import write_txt, read_txt, wget, read_json, write_json
-from research.datasets.basebuilder import BaseBuilder
+from ttd.utils import write_txt, read_txt, wget, read_json, write_json
+from ttd.basebuilder import BaseBuilder
 
 
 class MultiwozBuilder(BaseBuilder):

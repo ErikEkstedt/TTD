@@ -1,6 +1,8 @@
 from os.path import join
-import torch
 import re
+
+import torch
+import numpy as np
 
 from ttd.utils import write_json, find_island_idx_len
 from ttd.dialog_helpers import join_consecutive_utterances
@@ -8,19 +10,26 @@ from ttd.dialog_helpers import join_consecutive_utterances
 
 def remove_punctuation_capitalization(s, punct_token=None):
     s = s.lower()
+    s = re.sub("\((.*)\)", r"\1", s)  # remove parenthesis (but keep the content)
+    s = re.sub("\[(.*)\]", r"\1", s)  # remove parenthesis (but keep the content)
+    s = re.sub("\:\)\s", "", s)  # remove smiley
+    s = re.sub("\:\(\s", "", s)  # remove smiley
+    s = re.sub("\:\/\s", "", s)  # remove smiley
+    s = re.sub("\:\|\s", "", s)  # remove smiley
+    s = re.sub("\:D\s", "", s)  # remove smiley
+    s = re.sub("\:p\s", "", s)  # remove smiley
+    s = re.sub("\:P\s", "", s)  # remove smiley
     s = re.sub("\:\)", "", s)  # remove smiley
-    s = re.sub("\:\(", "", s)  # remove smiley
-    s = re.sub("\:\/", "", s)  # remove smiley
-    s = re.sub("\:\|", "", s)  # remove smiley
     s = re.sub(r"^[.,!?:;]+", "", s)  # Remove punctuation at start of turn
-    s = re.sub('[`´"]+', "", s)
+    s = re.sub('"', "", s)
+    s = re.sub("[`´]+", "'", s)
     s = re.sub(r"[\n\t]", "", s)  # Remove newline and tab
     s = re.sub(r"[:;]", "", s)  # remove :;
     if punct_token is not None:
         s = re.sub(r"[.,!?:;]", f" {punct_token}", s)  # all punctuation as one symbol
     else:
         s = re.sub(r"[.,!?:;]", " ", s)
-    s = re.sub(r"\s\s+", " ", s)  # clean whitespaces
+    s = re.sub(r"\s+", " ", s)  # clean whitespaces
     s = re.sub(r"\s$", "", s)
     # s = re.sub("\s\)", "", s)
     return s
@@ -282,3 +291,75 @@ def chunk_tokenized_dialog(tokenized_dialog, chunk_size, overlap, keep_length):
     else:
         return_dialogs.append(tokenized_dialog)  # return dialog as is
     return return_dialogs
+
+
+def format_special_chars(tokens):
+    """https://github.com/jessevig/bertviz"""
+    if isinstance(tokens, list):
+        return [t.replace("Ġ", " ").replace("</w>", "").strip() for t in tokens]
+    else:
+        return tokens.replace("Ġ", " ").replace("</w>", "").strip()
+
+
+def convert_ids_to_tokens(idx, tokenizer, clean_whitespace_char=True):
+    tokens = []
+    if idx.ndim == 1:
+        t = tokenizer.convert_ids_to_tokens(idx.tolist())
+        if clean_whitespace_char:
+            t = format_special_chars(t)
+        t = np.array(t, dtype="<U32")
+        return t
+    elif idx.ndim == 2:
+        for batch_list in idx.tolist():
+            t = tokenizer.convert_ids_to_tokens(batch_list)
+            if clean_whitespace_char:
+                t = format_special_chars(t)
+            t = np.array(t, dtype="<U32")
+            tokens.append(t)
+        return np.stack(tokens)
+    elif idx.ndim > 2:
+        # B, N, k
+        for tmp_idx in idx:
+            t = convert_ids_to_tokens(tmp_idx, tokenizer)
+            tokens.append(t)
+        return np.stack(tokens)
+
+
+def test_remove_punctuation():
+    test = [
+        'hello there :) my name is foo (HEHE), they call me "bar".',
+        "and i live in Baz. well I, you know, live there.",
+        "oh :/ :/ :/ :) :D :p :P that`s a shame... well [you know] that's (yeah) I's ",
+    ]
+    print()
+    for t in test:
+        p = remove_punctuation_capitalization(t)
+        print(t)
+        print("-" * 30)
+        print(p)
+        print("=" * 60)
+
+
+if __name__ == "__main__":
+
+    from research.tokenizer import load_turngpt_tokenizer, get_special_tokens_dict
+
+    special_tokens_dict = get_special_tokens_dict("turngpt_tokens")
+    tokenizer = load_turngpt_tokenizer(
+        pretrained="gpt2",
+        special_token_dict=special_tokens_dict,
+    )
+    string = "hello i would like to buy some fruit today"
+    input_ids = torch.tensor(tokenize_string(string, tokenizer)).unsqueeze(0)
+    idx = torch.cat([input_ids] * 4)
+    # idx = torch.stack([idx] * 2)
+    # idx = torch.stack([idx] * 3)
+    print(idx.shape)
+    tokens = convert_ids_to_tokens(idx, tokenizer)
+    print(tokens.shape)
+    print(tokens)
+
+    # tokens = np.array(idx.tolist(), dtype='<U32')
+    # print(tokens.shape)
+
+    test_remove_punctuation()
