@@ -13,6 +13,7 @@ from ttd.basebuilder import BaseBuilder
 from ttd.dialog_helpers import word_level_to_turns
 from ttd.utils import (
     read_json,
+    read_txt,
     write_json,
     get_duration_sox,
     get_sample_rate_sox,
