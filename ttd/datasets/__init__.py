@@ -6,3 +6,4 @@ from ttd.datasets.multiwoz import MultiwozBuilder
 from ttd.datasets.persona import PersonaBuilder
 from ttd.datasets.switchboard import SwitchboardBuilder
 from ttd.datasets.taskmaster import TaskmasterBuilder
+from ttd.datasets.empathetic import EmpatheticBuilder

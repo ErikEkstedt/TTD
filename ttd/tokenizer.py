@@ -48,6 +48,8 @@ def load_turngpt_tokenizer(pretrained="gpt2", special_token_dict=None):
         special_token_dict = TurnGPT_TOKENS
     num_added_toks = tokenizer.add_special_tokens(special_token_dict)
     print(f"Extended {pretrained} tokenizer with {num_added_toks}")
+    for special_token in tokenizer.additional_special_tokens:
+        print("\t" + special_token)
     return tokenizer
 
 
