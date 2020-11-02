@@ -113,6 +113,7 @@ def create_builders(hparams):
     return builders
 
 
+# Superclass used for all datasets
 class BaseBuilder(object):
     def __init__(self, hparams):
         if not isinstance(hparams, dict):
@@ -198,6 +199,7 @@ class BaseBuilder(object):
                 # vad = words_to_vad_percentage(word_level_dialog, audio_path)
                 vad_path = join(self.vad_root, json_name)
                 torch.save(vad, join(self.vad_root, json_name.replace(".json", ".pt")))
+            return self.vad_root
 
     def prepare_turn_level(self):
         if not self.check_if_dir_exists(self.turn_level_root):
