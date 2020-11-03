@@ -30,10 +30,10 @@ class PersonaBuilder(BaseBuilder):
             print("Extract data")
             zip_file = join(self.root, name)
             # system(f"tar -zxvf {zip_file}")
-            subprocess(["tar", "-zxvf", zip_file])
+            subprocess.call(["tar", "-zxvf", zip_file])
             unzipped_name = join(self.root, name.replace(".tqz", ""))
             # system(f"mv personachat {self.raw_data_root}")
-            subprocess(["mv", "personachat", self.raw_data_root])
+            subprocess.call(["mv", "personachat", self.raw_data_root])
 
     def download_audio(self):
         raise NotImplementedError(f"{self.NAME} has no audio")
