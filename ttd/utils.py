@@ -90,6 +90,61 @@ def percent_to_onehot(vad, n_frames, pad=0):
     return v
 
 
+def get_speaker_shift_indices(input_ids, sp1_idx, sp2_idx):
+    inp = input_ids.clone()
+    inp[inp == sp2_idx] = sp1_idx
+    sp_b, sp_inds = torch.where(inp == sp1_idx)  # all speaker 1 tokens
+    return (sp_b, sp_inds)
+
+
+def get_turn_shift_indices(input_ids, sp1_idx, sp2_idx):
+    ts_bs, ts_inds = get_speaker_shift_indices(input_ids, sp1_idx, sp2_idx)
+    ts_inds = ts_inds - 1  # turn-shift are
+    ts_bs = ts_bs[ts_inds != -1]
+    ts_inds = ts_inds[ts_inds != -1]
+    return (ts_bs, ts_inds)
+
+
+def get_turns(input_ids, sp1_idx, sp2_idx):
+    assert input_ids.ndim == 2
+    sp_b, sp_inds = get_speaker_shift_indices(input_ids, sp1_idx, sp2_idx)
+    turns = []
+    for b in range(input_ids.shape[0]):
+        turns.append(sp_inds[sp_b == b].unfold(0, 2, 1))
+    return turns
+
+
+def get_positive_and_negative_indices(input_ids, sp1_idx, sp2_idx, pad_idx):
+    """
+    Finds positive and negative indices for turn-shifts.
+
+    * Positive turn-shifts are the indices prior to a <speaker1/2> token
+    * Negative turn-shifts are all other indices (except pad_tokens)
+
+    Returns:
+        turn_shift_indices:     tuple, (batch, inds) e.g.  input_ids[turn_shift_indices]
+        non_turn_shift_indices: tuple, (batch, inds) e.g.  input_ids[non_turn_shift_indices]
+    """
+    (ts_bs, ts_inds) = get_turn_shift_indices(input_ids, sp1_idx, sp2_idx)
+    bp, indp = torch.where(input_ids != pad_idx)  # all valid places
+
+    # TODO:
+    # Remove the speaker-id tokens from negatives?
+
+    neg_bs, neg_inds = [], []
+    for i in bp.unique():
+        neg_ind = indp[bp == i]  # valid indices (not pad) # [1:]  # omit 0
+        ts = ts_inds[ts_bs == i]  # turn-shifts in batch i
+        neg_ind[ts] = -1  # mark these
+        neg_ind = neg_ind[neg_ind != -1]
+        neg_bs.append(torch.ones_like(neg_ind) * i)
+        neg_inds.append(neg_ind)
+
+    neg_bs = torch.cat(neg_bs)
+    neg_inds = torch.cat(neg_inds)
+    return (ts_bs, ts_inds), (neg_bs, neg_inds)
+
+
 def find_island_idx_len(x):
     """
     Finds patches of the same value.

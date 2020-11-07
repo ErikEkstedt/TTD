@@ -201,13 +201,18 @@ class BaseBuilder(object):
                 torch.save(vad, join(self.vad_root, json_name.replace(".json", ".pt")))
             return self.vad_root
 
+    def get_all_filepaths(self):
+        return self.train_filepaths + self.val_filepaths + self.test_filepaths
+
     def prepare_turn_level(self):
         if not self.check_if_dir_exists(self.turn_level_root):
             self._process_turn_level()
+        return self.turn_level_root
 
     def prepare_word_level(self):
         if not self.check_if_dir_exists(self.word_level_root):
             self._process_word_level()
+        return self.word_level_root
 
     def get_audio_path(self, name):
         audio_name = name + self.AUDIO_EXT
@@ -312,6 +317,7 @@ class BaseBuilder(object):
             print(f"{self.NAME} tokenization took {round(t, 1)} seconds")
             print(f"{self.NAME} broken", broken)
             write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
+        return self.tokenized_word_level_root
 
     def prepare_explicit_turn_level_tokens(self, tokenizer, EOT_token_id=None):
         """
@@ -346,6 +352,40 @@ class BaseBuilder(object):
                     explicit_turns, join(tokenized_explicit_turn_path, json_name)
                 )
         return tokenized_explicit_turn_path
+
+    def prepare_explicit_word_level_tokens(self, tokenizer, EOT_token_id=None):
+        """
+        loads all tokenized turn-level dialogs and inserts, either a special EOT_token_id (if not None)
+        or the index of the next speaker token, in between the turns.
+        """
+
+        tokenized_explicit_word_path = self.get_tokenized_root(
+            level="word", explicit_turns=True, EOT_token_id=EOT_token_id, chunk_size=-1
+        )
+
+        if not self.check_if_dir_exists(tokenized_explicit_word_path, ".json"):
+            self.prepare_word_level_tokens(tokenizer)  # check the necessary data exists
+
+            makedirs(tokenized_explicit_word_path, exist_ok=True)
+
+            # Copy tokenizer info
+            src = join(self.tokenized_word_level_root, "tokenizer_info")
+            dst = join(tokenized_explicit_word_path, "tokenizer_info")
+            shutil.copy(src, dst)
+
+            tok_files = glob(join(self.tokenized_word_level_root, "*.json"))
+            for tokenized_turn_level_path in tqdm(
+                tok_files, desc=f"{self.NAME} Explicit turns"
+            ):
+                tokenized_turn_level_dialog = read_json(tokenized_turn_level_path)
+                explicit_turns = add_explicit_turn_shift_token(
+                    tokenized_turn_level_dialog, EOT_token_id
+                )
+                json_name = basename(tokenized_turn_level_path)
+                write_json(
+                    explicit_turns, join(tokenized_explicit_word_path, json_name)
+                )
+        return tokenized_explicit_word_path
 
     def prepare_chunked_tokens(
         self, tokenized_path, chunk_size, overlap, keep_length, sep="_#"

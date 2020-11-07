@@ -173,10 +173,14 @@ def word_level_to_turns(
 
     # Operates only on VAD ------------
     ipu = vad_to_ipu(vad, ipu_frame_thresh)  # Words -> IPUs
-    turn = ipu_to_turns(ipu)  # IPU -> Turns
-    new_turn = omit_inside_overlap(
-        turn
+    ipu = omit_inside_overlap(
+        ipu
     )  # Remove overlaps that are completely inside the other channels turn
+    # ---------------------------------
+    turn = ipu_to_turns(ipu)  # IPU -> Turns
+    # new_turn = omit_inside_overlap(
+    #     turn
+    # )  # Remove overlaps that are completely inside the other channels turn
     # ---------------------------------
 
     # get all the words associated with the new turns
