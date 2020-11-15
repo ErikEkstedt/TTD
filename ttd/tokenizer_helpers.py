@@ -193,6 +193,7 @@ def add_explicit_turn_shift_token(x, EOT_token_id=None):
     speaker_starts, dur, vval = find_island_idx_len(torch.tensor(speaker_ids))
     for s, d in zip(speaker_starts, dur):
         e = s + d
+
         # Add single EOT token at turn-shifts or use the next speaker token
         current_speaker = speaker_ids[s]
         if EOT_token_id is not None:
@@ -221,7 +222,7 @@ def add_explicit_turn_shift_token(x, EOT_token_id=None):
 
     if ends is not None:
         assert len(expl_ends) == len(expl_input_ids)
-        ret["ends"] = expl_starts
+        ret["ends"] = expl_ends
 
     return ret
 

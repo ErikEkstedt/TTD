@@ -488,4 +488,22 @@ class BaseBuilder(object):
 
 
 if __name__ == "__main__":
-    pass
+
+    parser = ArgumentParser()
+    parser.add_argument(
+        "--datasets",
+        nargs="*",
+        type=str,
+        default=["maptask"],
+    )
+    datasets = parser.parse_args().datasets
+    parser = add_builder_specific_args(parser, datasets)  # add for all builders
+    args = parser.parse_args()
+
+    for k, v in vars(args).items():
+        print(f"{k}: {v}")
+
+    builders = create_builders(vars(args))
+    tokenizer = torch.load(
+        "turngpt_mini/turngpt/runs/TurnGPTpretrained/pretrained/deepvoice/version_0/tokenizer.pt"
+    )

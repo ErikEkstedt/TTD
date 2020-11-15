@@ -177,7 +177,7 @@ def word_level_to_turns(
         ipu
     )  # Remove overlaps that are completely inside the other channels turn
     # ---------------------------------
-    turn = ipu_to_turns(ipu)  # IPU -> Turns
+    new_turn = ipu_to_turns(ipu)  # IPU -> Turns
     # new_turn = omit_inside_overlap(
     #     turn
     # )  # Remove overlaps that are completely inside the other channels turn
