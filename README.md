@@ -1,2 +1,4 @@
 # TTD
-TurnTaking Datasets
+
+
+A repo to handle different datasets used in TurnGPT and other personal projects...
