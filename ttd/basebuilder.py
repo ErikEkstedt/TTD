@@ -248,27 +248,31 @@ class BaseBuilder(object):
                     turn_level_dialog, tokenizer, remove_punctuation=True
                 )
 
-                data = {
-                    "input_ids": input_ids,
-                    "speaker_ids": speaker_ids,
-                    "word_ids": word_ids,
-                }
+                if len(input_ids) > 1:
+                    data = {
+                        "input_ids": input_ids,
+                        "speaker_ids": speaker_ids,
+                        "word_ids": word_ids,
+                    }
 
-                if len(starts) > 0:
-                    data["starts"] = starts
+                    if len(starts) > 0:
+                        data["starts"] = starts
 
-                if len(ends) > 0:
-                    data["ends"] = ends
+                    if len(ends) > 0:
+                        data["ends"] = ends
 
-                write_json(
-                    data,
-                    join(self.tokenized_turn_level_root, basename(turn_level_path)),
-                )
+                    write_json(
+                        data,
+                        join(self.tokenized_turn_level_root, basename(turn_level_path)),
+                    )
+                else:
+                    broken_files.append(basename(turn_level_path))
 
             t = time.time() - t
             print(f"{self.NAME} tokenization took {round(t, 1)} seconds")
-            print(f"{self.NAME} broken", broken)
-            write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
+            if len(broken_files) > 0:
+                print(f"{self.NAME} broken", broken)
+                write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
         return self.tokenized_turn_level_root
 
     def prepare_word_level_tokens(self, tokenizer):
@@ -302,21 +306,25 @@ class BaseBuilder(object):
                     word_level_dialog,
                     tokenizer,
                 )
-                write_json(
-                    {
-                        "input_ids": input_ids,
-                        "speaker_ids": speaker_ids,
-                        "starts": starts,
-                        "ends": ends,
-                        "word_ids": word_ids,
-                    },
-                    join(self.tokenized_word_level_root, json_name),
-                )
+                if len(input_ids) > 1:
+                    write_json(
+                        {
+                            "input_ids": input_ids,
+                            "speaker_ids": speaker_ids,
+                            "starts": starts,
+                            "ends": ends,
+                            "word_ids": word_ids,
+                        },
+                        join(self.tokenized_word_level_root, json_name),
+                    )
+                else:
+                    broken_files.append(json_name)
 
             t = time.time() - t
             print(f"{self.NAME} tokenization took {round(t, 1)} seconds")
-            print(f"{self.NAME} broken", broken)
-            write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
+            if len(broken_files) > 0:
+                print(f"{self.NAME} broken", broken)
+                write_txt(broken_files, join(self.root, "broken_tokenize.txt"))
         return self.tokenized_word_level_root
 
     def prepare_explicit_turn_level_tokens(self, tokenizer, EOT_token_id=None):

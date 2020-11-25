@@ -190,7 +190,14 @@ def add_explicit_turn_shift_token(x, EOT_token_id=None):
     expl_starts = []
     expl_ends = []
     expl_word_ids = []
-    speaker_starts, dur, vval = find_island_idx_len(torch.tensor(speaker_ids))
+
+    try:
+        speaker_starts, dur, vval = find_island_idx_len(torch.tensor(speaker_ids))
+    except:
+        print("speaker_ids: ", speaker_ids.shape)
+        print("input_ids: ", input_ids.shape)
+        input()
+
     for s, d in zip(speaker_starts, dur):
         e = s + d
 
