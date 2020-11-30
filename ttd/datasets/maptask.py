@@ -215,9 +215,9 @@ class MaptaskBuilder(BaseBuilder):
                 )
         else:
             word = clean_maptask_word(word)
-            word = word.split("-")
-            if len(word) > 1:  # right-hand, left-hand- s-shaped
-                for word in word:
+            words = word.split("-")
+            if len(words) > 1:  # right-hand, left-hand- s-shaped
+                for word in words:
                     word = clean_maptask_word(word)
                     clean_dialog.append(
                         {
@@ -231,7 +231,7 @@ class MaptaskBuilder(BaseBuilder):
             else:
                 clean_dialog.append(
                     {
-                        "word": word[0],
+                        "word": words[0],
                         "start": start,
                         "end": end,
                         "id": idd,
