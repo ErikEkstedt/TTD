@@ -78,25 +78,6 @@ def clean_swb_word(w):
     return w
 
 
-def check_swb_words():
-    from research.datasets.verbal import WordDataset
-
-    parser = ArgumentParser()
-    parser = SwitchboardDataModuleBase.add_data_specific_args(parser)
-    args = parser.parse_args()
-    dm = SwitchboardDataModuleBase(vars(args))
-    dm.prepare_data()
-    dset = WordDataset(dm.dialog_root, clean_function=dm.clean_word_function)
-    non_alpha = set()
-    for words, speaker_id, starts, name in tqdm(dset):
-        for w in words:
-            w = re.sub(r"\'", "", w)
-            if not w.isalpha():
-                non_alpha.add(w)
-    print(len(non_alpha))
-    return non_alpha
-
-
 class SwitchboardBuilder(BaseBuilder):
     URL = "https://www.isip.piconepress.com/projects/switchboard/releases/switchboard_word_alignments.tar.gz"
     N_FILES = 2438

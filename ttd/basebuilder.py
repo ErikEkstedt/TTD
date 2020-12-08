@@ -1,15 +1,18 @@
 from argparse import ArgumentParser
-from os.path import join, split, basename, exists
-from os import makedirs, listdir
 from glob import glob
+from os import makedirs, listdir
+from os.path import join, split, basename, exists
 from tqdm import tqdm
-import time
+import multiprocessing as mp
 import shutil
+import time
 
 import torch
+import torchaudio
+import torchaudio.transforms as AT
 
 from ttd.utils import read_json, write_json, write_txt, read_txt
-from ttd.vad_helpers import vad_from_word_level
+from ttd.vad_helpers import vad_from_word_level, percent_to_onehot
 from ttd.POS import extract_turn_level_pos
 from ttd.tokenizer_helpers import (
     tokenize_word_level_dialog,
@@ -18,6 +21,67 @@ from ttd.tokenizer_helpers import (
     chunk_tokenized_dialog,
     tokenizer_info,
 )
+
+from ttd.pitch import F0
+
+
+class ExtractF0(object):
+    def __init__(
+        self,
+        sr=8000,
+        hop_time=0.01,
+        f0_min=60,
+        f0_max=300,
+        f0_threshold=0.3,
+        vad_mask=True,
+        root="data/maptask",
+        savepath="data/maptask/pitch",
+        audio_ext=".wav",
+        n_process=None,
+    ):
+        self.root = root
+        self.savepath = savepath
+        if n_process is not None:
+            self.n_process = n_process
+        else:
+            self.n_process = mp.cpu_count()
+        self.audio_ext = audio_ext
+
+        self.sr = sr
+        self.vad_mask = vad_mask
+        self._F0 = F0(
+            sr=sr,
+            hop_time=hop_time,
+            f0_min=f0_min,
+            f0_max=f0_max,
+            f0_threshold=f0_threshold,
+        )
+
+    def _process(self, wav_path):
+        waveform, tmp_sr = torchaudio.load(wav_path, normalization=True)
+        if tmp_sr != self.sr:
+            waveform = AT.Resample(orig_freq=tmp_sr, new_freq=self.sr)(waveform)
+
+        name = basename(wav_path).replace(".wav", ".pt").replace(".sph", ".pt")
+        if self.vad_mask:
+            vad_percent = torch.load(join(self.root, "VAD", name))
+            vad_samples = percent_to_onehot(vad_percent, waveform.shape[-1])
+            waveform *= vad_samples
+
+        pitch = self._F0(waveform)
+        torch.save(pitch, join(self.savepath, name))
+
+    def process(self):
+        makedirs(self.savepath, exist_ok=True)
+        audio_files = glob(join(self.root, "audio", f"*{self.audio_ext}"))
+        with mp.Pool(4) as p:
+            list(
+                tqdm(
+                    p.imap_unordered(self._process, audio_files),
+                    total=len(audio_files),
+                    desc=f"F0 ({self.n_process} processes)",
+                )
+            )
 
 
 # This feels very dumb....
@@ -156,6 +220,13 @@ class BaseBuilder(object):
             return False
         return True
 
+    def get_all_filepaths(self):
+        return self.train_filepaths + self.val_filepaths + self.test_filepaths
+
+    def get_f0_path(self, sr, hop_time, f0_min, f0_max, f0_threshold, vad_mask):
+        fpath = f"F0_sr-{sr}_ht-{hop_time}_fmin-{f0_min}_fmax-{f0_max}_thr-{f0_threshold}_mask-{vad_mask}"
+        return join(self.root, fpath)
+
     def prepare_pos(self):
         if not self.check_if_dir_exists(self.pos_root):
             makedirs(self.pos_root, exist_ok=True)
@@ -201,8 +272,30 @@ class BaseBuilder(object):
                 torch.save(vad, join(self.vad_root, json_name.replace(".json", ".pt")))
             return self.vad_root
 
-    def get_all_filepaths(self):
-        return self.train_filepaths + self.val_filepaths + self.test_filepaths
+    def prepare_f0(
+        self,
+        sr=8000,
+        hop_time=0.01,
+        f0_min=60,
+        f0_max=300,
+        f0_threshold=0.3,
+        vad_mask=True,
+    ):
+        f0_path = self.get_f0_path(sr, hop_time, f0_min, f0_max, f0_threshold, vad_mask)
+        if not self.check_if_dir_exists(f0_path):
+            extractor = ExtractF0(
+                sr=sr,
+                hop_time=hop_time,
+                f0_min=f0_min,
+                f0_max=f0_max,
+                f0_threshold=f0_threshold,
+                vad_mask=vad_mask,
+                root=self.root,
+                savepath=f0_path,
+                audio_ext=self.AUDIO_EXT,
+            )
+            extractor.process()
+        return f0_path
 
     def prepare_turn_level(self):
         if not self.check_if_dir_exists(self.turn_level_root):
@@ -512,6 +605,6 @@ if __name__ == "__main__":
         print(f"{k}: {v}")
 
     builders = create_builders(vars(args))
-    tokenizer = torch.load(
-        "turngpt_mini/turngpt/runs/TurnGPTpretrained/pretrained/deepvoice/version_0/tokenizer.pt"
-    )
+
+    for b in builders:
+        b.prepare_f0()

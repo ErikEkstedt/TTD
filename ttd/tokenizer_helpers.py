@@ -311,6 +311,12 @@ def format_special_chars(tokens):
 
 def convert_ids_to_tokens(idx, tokenizer, clean_whitespace_char=True):
     tokens = []
+    if idx.ndim == 0:
+        t = tokenizer.convert_ids_to_tokens([idx.tolist()])
+        if clean_whitespace_char:
+            t = format_special_chars(t)
+        t = np.array(t, dtype="<U32")
+        return t
     if idx.ndim == 1:
         t = tokenizer.convert_ids_to_tokens(idx.tolist())
         if clean_whitespace_char:
