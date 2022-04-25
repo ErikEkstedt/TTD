@@ -3,3 +3,5 @@ tqdm
 torch
 nltk
 transformers==3.3.1
+librosa
+pysptk
