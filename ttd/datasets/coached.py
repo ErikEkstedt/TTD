@@ -32,8 +32,8 @@ random.seed(10)  # for split creation
 
 
 class CoachedBuilder(BaseBuilder):
-    URL = "https://storage.googleapis.com/dialog-data-corpus/CCPE-M-2019/data.json"
-    README = "https://storage.googleapis.com/dialog-data-corpus/CCPE-M-2019/README.txt"
+    URL = "https://raw.githubusercontent.com/google-research-datasets/ccpe/main/data.json"
+    README = "https://raw.githubusercontent.com/google-research-datasets/ccpe/main/README.md"
     NAME = "Coached"
     SPLIT = {"train": 0.9, "test": 0.05}  # validation is remaining
 
